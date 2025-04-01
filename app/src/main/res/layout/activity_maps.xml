@@ -6,6 +6,7 @@
     android:layout_height="match_parent"
     tools:context=".MapsActivity">
 
+    <!-- SearchView at the top -->
     <androidx.appcompat.widget.SearchView
         android:id="@+id/search_location"
         android:layout_width="match_parent"
@@ -15,21 +16,23 @@
         android:queryHint="Search for a location"
         android:iconifiedByDefault="false" />
 
+    <!-- ListView below the SearchView, initially hidden -->
     <ListView
         android:id="@+id/search_list"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"/>
+        android:layout_height="wrap_content"
+        android:layout_below="@id/search_location"
+        android:visibility="gone"/>
 
-
-
+    <!-- MapView below the ListView -->
     <org.osmdroid.views.MapView
         android:id="@+id/osmmap"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_below="@id/search_location"
-        android:layout_alignParentBottom="true"
-        android:layout_above="@id/btn_recapture_location" />
+        android:layout_below="@id/search_list"
+        android:layout_alignParentBottom="true" />
 
+    <!-- Button to recapture the location -->
     <Button
         android:id="@+id/btn_recapture_location"
         android:layout_width="wrap_content"
@@ -38,5 +41,4 @@
         android:layout_alignParentBottom="true"
         android:layout_centerHorizontal="true"
         android:layout_marginBottom="20dp" />
-
 </RelativeLayout>

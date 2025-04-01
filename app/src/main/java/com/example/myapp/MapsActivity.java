@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
@@ -12,9 +13,11 @@ import android.location.LocationManager;
 import android.os.Bundle;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -24,11 +27,13 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.example.myapp.databinding.ActivityMapsBinding;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.osmdroid.api.IMapController;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.Polyline;
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
@@ -38,6 +43,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -50,6 +56,9 @@ public class MapsActivity extends AppCompatActivity {
     private GeoPoint myCurrentLocation;
     private LocationManager locationManager;
     private LocationListener locationListener;
+
+    private GeoPoint currentLocation;
+
 
     private boolean isUserInteracting = false;
 
@@ -77,7 +86,10 @@ public class MapsActivity extends AppCompatActivity {
         controller.setZoom(10.0);
         controller.setCenter(new GeoPoint(0.0, 0.0)); // Set initial center
 
+
         Button btnRecaptureLocation = findViewById(R.id.btn_recapture_location);
+
+
 
         btnRecaptureLocation.setOnClickListener(v -> {
                     if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -114,12 +126,16 @@ public class MapsActivity extends AppCompatActivity {
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
-                searchLocation(query);
+//                searchLocation(query);
+                fetchLocationSuggestions(query);
                 return false;
             }
 
             @Override
             public boolean onQueryTextChange(String newText) {
+                if(!newText.isEmpty()){
+                    fetchLocationSuggestions(newText);
+                }
                 return false;
             }
         });
@@ -169,10 +185,135 @@ public class MapsActivity extends AppCompatActivity {
         } else {
             getCurrentLocation();
         }
-
-
-
     }
+
+
+    private void fetchLocationSuggestions(String query) {
+        ListView locationListView = findViewById(R.id.search_list);
+
+        new Thread(() -> {
+            try {
+                String urlStr = "https://nominatim.openstreetmap.org/search?q=" +
+                        URLEncoder.encode(query, "UTF-8") +
+                        "&format=json&addressdetails=1&limit=5";
+                URL url = new URL(urlStr);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+
+                InputStream inputStream = connection.getInputStream();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+
+                JSONArray jsonArray = new JSONArray(response.toString());
+                ArrayList<String> locations = new ArrayList<>();
+                ArrayList<GeoPoint> geoPoints = new ArrayList<>();
+
+                for (int i = 0; i < jsonArray.length(); i++) {
+                    JSONObject place = jsonArray.getJSONObject(i);
+                    String displayName = place.getString("display_name");
+                    double lat = place.getDouble("lat");
+                    double lon = place.getDouble("lon");
+
+                    locations.add(displayName);
+                    geoPoints.add(new GeoPoint(lat, lon));
+                }
+
+                runOnUiThread(() -> {
+                    if (!locations.isEmpty()) {
+                        ArrayAdapter<String> adapter = new ArrayAdapter<>(MapsActivity.this, R.layout.list_item, locations);
+                        locationListView.setAdapter(adapter);
+
+                        locationListView.setVisibility(View.VISIBLE);
+
+                        locationListView.setOnItemClickListener((parent, view, position, id) -> {
+                            GeoPoint selectedPoint = geoPoints.get(position);
+                            String selectedLocation = locations.get(position);
+
+                            locationListView.setVisibility(View.GONE);
+
+                            showLocationOnMap(selectedPoint, selectedLocation);
+                            drawRoute(currentLocation, selectedPoint);
+                        });
+                    } else {
+                        // If no results, hide the ListView
+                        locationListView.setVisibility(View.GONE);
+                    }
+                });
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+
+    private void showLocationOnMap(GeoPoint point, String location) {
+        controller.setCenter(point);
+        controller.setZoom(18.0);
+
+        Marker marker = new Marker(mMap);
+        marker.setPosition(point);
+        marker.setTitle(location);
+        marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
+        mMap.getOverlays().add(marker);
+        mMap.invalidate();
+    }
+
+    private void drawRoute(GeoPoint start, GeoPoint end) {
+        new Thread(() -> {
+            try {
+                String urlStr = "https://router.project-osrm.org/route/v1/driving/" +
+                        start.getLongitude() + "," + start.getLatitude() + ";" +
+                        end.getLongitude() + "," + end.getLatitude() +
+                        "?overview=full&geometries=geojson";
+                URL url = new URL(urlStr);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+
+                InputStream inputStream = connection.getInputStream();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+
+                JSONObject jsonObject = new JSONObject(response.toString());
+                JSONArray routes = jsonObject.getJSONArray("routes");
+                if (routes.length() > 0) {
+                    JSONObject route = routes.getJSONObject(0);
+                    JSONObject geometry = route.getJSONObject("geometry");
+                    JSONArray coordinates = geometry.getJSONArray("coordinates");
+
+                    List<GeoPoint> routePoints = new ArrayList<>();
+                    for (int i = 0; i < coordinates.length(); i++) {
+                        JSONArray coord = coordinates.getJSONArray(i);
+                        double lon = coord.getDouble(0);
+                        double lat = coord.getDouble(1);
+                        routePoints.add(new GeoPoint(lat, lon));
+                    }
+
+                    runOnUiThread(() -> {
+                        Polyline lineOverlay = new Polyline();
+                        lineOverlay.setPoints(routePoints);
+                        lineOverlay.setColor(Color.BLUE);
+                        lineOverlay.setWidth(8);
+                        mMap.getOverlays().add(lineOverlay);
+                        mMap.invalidate();
+                    });
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+
+
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -199,34 +340,6 @@ public class MapsActivity extends AppCompatActivity {
         }
     }
 
-
-    private void searchLocation(String location) {
-        Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-        try {
-            List<Address> addressList = geocoder.getFromLocationName(location, 1);
-            if (addressList != null && !addressList.isEmpty()) {
-                Address address = addressList.get(0);
-                GeoPoint destination = new GeoPoint(address.getLatitude(), address.getLongitude());
-                Log.d("MapsActivity", "Destination Location: " + destination.getLatitude() + ", " + destination.getLongitude());
-
-                if (myCurrentLocation != null) {
-                    fetchRoute(myCurrentLocation, destination);
-                } else {
-                    Log.e("MapsActivity", "Current location is not available yet.");
-                    Toast.makeText(this, "Current location is not available yet.", Toast.LENGTH_SHORT).show();
-                }
-
-                controller.setCenter(destination);
-                controller.setZoom(20.0);
-                Toast.makeText(this, "Location not found!", Toast.LENGTH_SHORT).show();
-
-            } else {
-                Log.e("MapsActivity", "No location found for: " + location);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 
     @Override
     protected void onResume() {

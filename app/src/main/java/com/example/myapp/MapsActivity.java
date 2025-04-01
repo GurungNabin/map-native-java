@@ -5,8 +5,6 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.location.Address;
-import android.location.Geocoder;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -89,35 +87,34 @@ public class MapsActivity extends AppCompatActivity {
 
         Button btnRecaptureLocation = findViewById(R.id.btn_recapture_location);
 
-
-
         btnRecaptureLocation.setOnClickListener(v -> {
-                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                        locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, new LocationListener() {
-                            @Override
-                            public void onLocationChanged(@NonNull Location location) {
-                                myCurrentLocation = new GeoPoint(location.getLatitude(), location.getLongitude());
-                                controller.setCenter(myCurrentLocation);
-                                controller.setZoom(18.0);
-                                mMap.invalidate();
-                                Toast.makeText(MapsActivity.this, "Location recaptured!", Toast.LENGTH_SHORT).show();
-                            }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, new LocationListener() {
+                    @Override
+                    public void onLocationChanged(@NonNull Location location) {
+                        myCurrentLocation = new GeoPoint(location.getLatitude(), location.getLongitude());
+                        controller.setCenter(myCurrentLocation);
+                        controller.setZoom(18.0);
 
-                            @Override
-                            public void onStatusChanged(String provider, int status, Bundle extras) {
-                            }
-
-                            @Override
-                            public void onProviderEnabled(@NonNull String provider) {
-                            }
-
-                            @Override
-                            public void onProviderDisabled(@NonNull String provider) {
-                            }
-                        }, null);
-                    } else {
-                        Toast.makeText(this, "Location permission required!", Toast.LENGTH_SHORT).show();
+                        mMap.invalidate();
+                        Toast.makeText(MapsActivity.this, "Location recaptured!", Toast.LENGTH_SHORT).show();
                     }
+
+                    @Override
+                    public void onStatusChanged(String provider, int status, Bundle extras) {
+                    }
+
+                    @Override
+                    public void onProviderEnabled(@NonNull String provider) {
+                    }
+
+                    @Override
+                    public void onProviderDisabled(@NonNull String provider) {
+                    }
+                }, null);
+            } else {
+                Toast.makeText(this, "Location permission required!", Toast.LENGTH_SHORT).show();
+            }
         });
 
         SearchView searchView = binding.searchLocation;
@@ -154,20 +151,37 @@ public class MapsActivity extends AppCompatActivity {
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
         locationListener = new LocationListener() {
+//            @Override
+//            public void onLocationChanged(@NonNull Location location) {
+//                if (location.getLatitude() != 0 && location.getLongitude() != 0) {
+//                    myCurrentLocation = new GeoPoint(location.getLatitude(), location.getLongitude());
+//                    Log.d("MapsActivity", "Current Location Updated: " + myCurrentLocation.getLatitude() + ", " + myCurrentLocation.getLongitude());
+//
+//                    if (!isUserInteracting && controller != null) {
+//                        controller.setCenter(myCurrentLocation);
+//                        controller.setZoom(20.0);
+//                    }
+//
+//                    mMap.invalidate();
+//                }
+//            }
+
             @Override
             public void onLocationChanged(@NonNull Location location) {
                 if (location.getLatitude() != 0 && location.getLongitude() != 0) {
-                    myCurrentLocation = new GeoPoint(location.getLatitude(), location.getLongitude());
-                    Log.d("MapsActivity", "Current Location Updated: " + myCurrentLocation.getLatitude() + ", " + myCurrentLocation.getLongitude());
+                    currentLocation = new GeoPoint(location.getLatitude(), location.getLongitude());
+                    Log.d("MapsActivity", "Current Location Updated: " + currentLocation.getLatitude() + ", " + currentLocation.getLongitude());
 
                     if (!isUserInteracting && controller != null) {
-                        controller.setCenter(myCurrentLocation);
+                        controller.setCenter(currentLocation);
                         controller.setZoom(20.0);
                     }
+
 
                     mMap.invalidate();
                 }
             }
+
 
             @Override
             public void onStatusChanged(String provider, int status, Bundle extras) {}
@@ -236,7 +250,16 @@ public class MapsActivity extends AppCompatActivity {
                             locationListView.setVisibility(View.GONE);
 
                             showLocationOnMap(selectedPoint, selectedLocation);
-                            drawRoute(currentLocation, selectedPoint);
+//                            drawRoute(currentLocation, selectedPoint);
+
+                            if (currentLocation != null) {
+                                // Fetch and display the route from current location to the selected destination
+                                fetchRoute(currentLocation, selectedPoint);
+                                drawRoute(currentLocation, selectedPoint);
+
+                            } else {
+                                Log.e("MapsActivity", "Current location is not available.");
+                            }
                         });
                     } else {
                         // If no results, hide the ListView
@@ -296,7 +319,6 @@ public class MapsActivity extends AppCompatActivity {
                         double lat = coord.getDouble(1);
                         routePoints.add(new GeoPoint(lat, lon));
                     }
-
                     runOnUiThread(() -> {
                         Polyline lineOverlay = new Polyline();
                         lineOverlay.setPoints(routePoints);
@@ -311,9 +333,6 @@ public class MapsActivity extends AppCompatActivity {
             }
         }).start();
     }
-
-
-
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
